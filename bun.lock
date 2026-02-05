@@ -20,7 +20,7 @@
     },
     "packages/browser-logger": {
       "name": "@protobuf-ts-toolkit/browser-logger",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "devDependencies": {
         "@protobuf-ts/runtime": "^2.9.0",
         "@protobuf-ts/runtime-rpc": "^2.9.0",
@@ -35,7 +35,7 @@
     },
     "packages/grpc-error": {
       "name": "@protobuf-ts-toolkit/grpc-error",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "devDependencies": {
         "@protobuf-ts/runtime": "^2.9.0",
         "@protobuf-ts/runtime-rpc": "^2.9.0",
@@ -68,7 +68,7 @@
     },
     "packages/metadata": {
       "name": "@protobuf-ts-toolkit/metadata",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "devDependencies": {
         "@protobuf-ts/runtime-rpc": "^2.9.0",
         "tsup": "^8.0.0",
@@ -80,7 +80,7 @@
     },
     "packages/opentelemetry": {
       "name": "@protobuf-ts-toolkit/opentelemetry",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "devDependencies": {
         "@opentelemetry/api": "^1.9.0",
         "@protobuf-ts/runtime-rpc": "^2.9.0",
