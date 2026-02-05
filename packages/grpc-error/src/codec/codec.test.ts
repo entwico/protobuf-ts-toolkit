@@ -1,19 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { encodeGrpcStatus } from './encode.js';
+import { NotFoundError, PermissionDeniedError, UnauthenticatedError, ValidationError } from '../errors.js';
 import { decodeGrpcStatus } from './decode.js';
-import {
-  ValidationError,
-  NotFoundError,
-  PermissionDeniedError,
-  UnauthenticatedError,
-} from '../errors.js';
+import { encodeGrpcStatus } from './encode.js';
 
 describe('encode/decode roundtrip', () => {
   it('should roundtrip ValidationError with localizedMessage', () => {
     const error = new ValidationError({
-      details: [
-        { type: 'localizedMessage', locale: 'en', message: 'Invalid input provided' },
-      ],
+      details: [{ type: 'localizedMessage', locale: 'en', message: 'Invalid input provided' }],
     });
 
     const encoded = encodeGrpcStatus(error);
@@ -137,9 +130,7 @@ describe('encode/decode roundtrip', () => {
 
   it('should roundtrip retryInfo detail', () => {
     const error = new ValidationError({
-      details: [
-        { type: 'retryInfo', retryDelaySeconds: 30 },
-      ],
+      details: [{ type: 'retryInfo', retryDelaySeconds: 30 }],
     });
 
     const encoded = encodeGrpcStatus(error);
@@ -157,9 +148,7 @@ describe('encode/decode roundtrip', () => {
       details: [
         {
           type: 'quotaFailure',
-          violations: [
-            { subject: 'api_requests', description: 'Exceeded daily limit' },
-          ],
+          violations: [{ subject: 'api_requests', description: 'Exceeded daily limit' }],
         },
       ],
     });
@@ -183,9 +172,7 @@ describe('encode/decode roundtrip', () => {
       details: [
         {
           type: 'preconditionFailure',
-          violations: [
-            { type: 'TOS', subject: 'user', description: 'Terms not accepted' },
-          ],
+          violations: [{ type: 'TOS', subject: 'user', description: 'Terms not accepted' }],
         },
       ],
     });

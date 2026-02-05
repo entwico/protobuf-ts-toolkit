@@ -1,6 +1,5 @@
 import type { ErrorDetail, GrpcErrorOptions } from './types.js';
 
-
 /**
  * Base class for all gRPC errors.
  * Can be used on both client (caught from interceptor) and server (thrown to be converted to gRPC status).
@@ -26,7 +25,10 @@ export class GrpcError extends Error {
 
     // Maintains proper stack trace for where our error was thrown (only available on V8)
     if ('captureStackTrace' in Error) {
-      (Error as { captureStackTrace: (t: object, c?: Function) => void }).captureStackTrace(this, this.constructor);
+      (Error as { captureStackTrace: (t: object, c?: new (...args: unknown[]) => unknown) => void }).captureStackTrace(
+        this,
+        this.constructor as new (...args: unknown[]) => unknown,
+      );
     }
   }
 }

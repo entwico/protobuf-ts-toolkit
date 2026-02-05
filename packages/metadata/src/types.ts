@@ -14,12 +14,9 @@ export interface MetadataContext {
 }
 
 /**
- * Metadata provider - can be static, sync function, or async function.
+ * Metadata provider - can be a static object or a function returning metadata.
  */
-export type MetadataProvider =
-  | RpcMetadata
-  | ((context: MetadataContext) => RpcMetadata)
-  | ((context: MetadataContext) => Promise<RpcMetadata>);
+export type MetadataProvider = RpcMetadata | ((context: MetadataContext) => RpcMetadata | Promise<RpcMetadata>);
 
 /**
  * Configuration for the metadata interceptor.

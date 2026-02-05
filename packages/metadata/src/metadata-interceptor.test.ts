@@ -1,6 +1,6 @@
+import type { MethodInfo, RpcOptions, UnaryCall } from '@protobuf-ts/runtime-rpc';
 import { describe, expect, it, mock } from 'bun:test';
 import { createMetadataInterceptor } from './metadata-interceptor.js';
-import type { MethodInfo, RpcOptions, UnaryCall } from '@protobuf-ts/runtime-rpc';
 
 // Mock method info
 const mockMethod: MethodInfo = {

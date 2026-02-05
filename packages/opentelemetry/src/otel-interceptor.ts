@@ -1,13 +1,14 @@
-import { context, propagation, SpanKind, SpanStatusCode, trace, type Span, type SpanOptions } from '@opentelemetry/api';
-import type { MethodInfo, RpcInterceptor, RpcMetadata, RpcOptions, RpcStatus } from '@protobuf-ts/runtime-rpc';
+import { type Span, SpanKind, type SpanOptions, SpanStatusCode, context, propagation, trace } from '@opentelemetry/api';
 import {
-  ClientStreamingCall,
-  Deferred,
+  type ClientStreamingCall,
   DuplexStreamingCall,
+  type MethodInfo,
   RpcError,
+  type RpcInterceptor,
+  type RpcMetadata,
+  type RpcOptions,
   RpcOutputStreamController,
   ServerStreamingCall,
-  UnaryCall,
 } from '@protobuf-ts/runtime-rpc';
 
 /**
@@ -49,6 +50,7 @@ function defaultSpanNameFormatter(method: MethodInfo, _callType: string): string
 function injectTraceContext(meta: RpcMetadata): RpcMetadata {
   const output: Record<string, string> = {};
   propagation.inject(context.active(), output);
+
   return { ...meta, ...output };
 }
 
@@ -114,104 +116,67 @@ export function createOtelInterceptor(config: OtelConfig = {}): RpcInterceptor {
 
   return {
     interceptUnary(next, method, input, options) {
-      const headers$ = new Deferred<RpcMetadata>();
-      const response$ = new Deferred<object>();
-      const status$ = new Deferred<RpcStatus>();
-      const trailers$ = new Deferred<RpcMetadata>();
-
       const spanOptions = createSpanOptions(method);
       const spanName = spanNameFormatter(method, 'unary');
 
-      tracer.startActiveSpan(spanName, spanOptions, (span) => {
-        (async () => {
-          try {
-            const meta = injectTraceContext(options.meta ?? {});
-            const res = await next(method, input, { ...options, meta });
-
-            headers$.resolve(res.headers);
-            response$.resolve(res.response);
-            status$.resolve(res.status);
-            trailers$.resolve(res.trailers);
-
-            span.setAttribute(ATTR_RPC_GRPC_STATUS_CODE, res.status.code);
-            span.setStatus({ code: SpanStatusCode.OK });
-          } catch (e) {
-            setSpanError(span, e);
-            headers$.reject(e);
-            response$.reject(e);
-            status$.reject(e);
-            trailers$.reject(e);
-          } finally {
-            span.end();
-          }
-        })();
-      });
-
-      return new UnaryCall(
-        method,
-        options.meta ?? {},
-        input,
-        headers$.promise,
-        response$.promise,
-        status$.promise,
-        trailers$.promise,
-      );
-    },
-
-    interceptServerStreaming(next, method, input, options) {
-      const outputStream = new RpcOutputStreamController();
-      const headersDeferred = new Deferred<RpcMetadata>();
-      const statusDeferred = new Deferred<RpcStatus>();
-      const trailersDeferred = new Deferred<RpcMetadata>();
-
-      const spanOptions = createSpanOptions(method);
-      const spanName = spanNameFormatter(method, 'serverStreaming');
-
-      tracer.startActiveSpan(spanName, spanOptions, (span) => {
+      return tracer.startActiveSpan(spanName, spanOptions, (span) => {
         const meta = injectTraceContext(options.meta ?? {});
         const call = next(method, input, { ...options, meta });
 
-        call.headers.then((h) => headersDeferred.resolve(h)).catch((e) => {
-          setSpanError(span, e);
-          headersDeferred.reject(e);
-        });
+        call.response.then(
+          () => {
+            call.status.then((s) => {
+              span.setAttribute(ATTR_RPC_GRPC_STATUS_CODE, s.code);
+              span.setStatus({ code: SpanStatusCode.OK });
+              span.end();
+            });
+          },
+          (e) => {
+            setSpanError(span, e);
+            span.end();
+          },
+        );
+
+        return call;
+      });
+    },
+
+    interceptServerStreaming(next, method, input, options) {
+      const spanOptions = createSpanOptions(method);
+      const spanName = spanNameFormatter(method, 'serverStreaming');
+
+      return tracer.startActiveSpan(spanName, spanOptions, (span) => {
+        const meta = injectTraceContext(options.meta ?? {});
+        const call = next(method, input, { ...options, meta });
+        const outputStream = new RpcOutputStreamController();
 
         call.status.then((s) => {
           span.setAttribute(ATTR_RPC_GRPC_STATUS_CODE, s.code);
           span.setStatus({ code: SpanStatusCode.OK });
-          statusDeferred.resolve(s);
-        }).catch((e) => {
-          setSpanError(span, e);
-          statusDeferred.reject(e);
-        });
-
-        call.trailers.then((t) => {
-          trailersDeferred.resolve(t);
-          span.end();
-        }).catch((e) => {
-          trailersDeferred.reject(e);
           span.end();
         });
 
         call.responses.onNext((message, error, done) => {
           if (message) outputStream.notifyMessage(message);
+
           if (error) {
             setSpanError(span, error);
             outputStream.notifyError(error);
           }
+
           if (done) outputStream.notifyComplete();
         });
-      });
 
-      return new ServerStreamingCall(
-        method,
-        options.meta ?? {},
-        input,
-        headersDeferred.promise,
-        outputStream,
-        statusDeferred.promise,
-        trailersDeferred.promise,
-      );
+        return new ServerStreamingCall(
+          method,
+          options.meta ?? {},
+          input,
+          call.headers,
+          outputStream,
+          call.status,
+          call.trailers,
+        );
+      });
     },
 
     interceptClientStreaming<I extends object, O extends object>(
@@ -219,57 +184,29 @@ export function createOtelInterceptor(config: OtelConfig = {}): RpcInterceptor {
       method: MethodInfo<I, O>,
       options: RpcOptions,
     ): ClientStreamingCall<I, O> {
-      const headersDeferred = new Deferred<RpcMetadata>();
-      const responseDeferred = new Deferred<O>();
-      const statusDeferred = new Deferred<RpcStatus>();
-      const trailersDeferred = new Deferred<RpcMetadata>();
-
       const spanOptions = createSpanOptions(method);
       const spanName = spanNameFormatter(method, 'clientStreaming');
 
-      let call: ClientStreamingCall<I, O>;
-
-      tracer.startActiveSpan(spanName, spanOptions, (span) => {
+      return tracer.startActiveSpan(spanName, spanOptions, (span) => {
         const meta = injectTraceContext(options.meta ?? {});
-        call = next(method, { ...options, meta });
+        const call = next(method, { ...options, meta });
 
-        call.headers.then((h) => headersDeferred.resolve(h)).catch((e) => {
-          setSpanError(span, e);
-          headersDeferred.reject(e);
-        });
+        call.response.then(
+          () => {
+            call.status.then((s) => {
+              span.setAttribute(ATTR_RPC_GRPC_STATUS_CODE, s.code);
+              span.setStatus({ code: SpanStatusCode.OK });
+              span.end();
+            });
+          },
+          (e) => {
+            setSpanError(span, e);
+            span.end();
+          },
+        );
 
-        call.response.then((r) => responseDeferred.resolve(r)).catch((e) => {
-          setSpanError(span, e);
-          responseDeferred.reject(e);
-        });
-
-        call.status.then((s) => {
-          span.setAttribute(ATTR_RPC_GRPC_STATUS_CODE, s.code);
-          span.setStatus({ code: SpanStatusCode.OK });
-          statusDeferred.resolve(s);
-        }).catch((e) => {
-          setSpanError(span, e);
-          statusDeferred.reject(e);
-        });
-
-        call.trailers.then((t) => {
-          trailersDeferred.resolve(t);
-          span.end();
-        }).catch((e) => {
-          trailersDeferred.reject(e);
-          span.end();
-        });
+        return call;
       });
-
-      return new ClientStreamingCall<I, O>(
-        method,
-        options.meta ?? {},
-        call!.requests,
-        headersDeferred.promise,
-        responseDeferred.promise,
-        statusDeferred.promise,
-        trailersDeferred.promise,
-      );
     },
 
     interceptDuplex<I extends object, O extends object>(
@@ -277,61 +214,47 @@ export function createOtelInterceptor(config: OtelConfig = {}): RpcInterceptor {
       method: MethodInfo<I, O>,
       options: RpcOptions,
     ): DuplexStreamingCall<I, O> {
-      const headersDeferred = new Deferred<RpcMetadata>();
-      const statusDeferred = new Deferred<RpcStatus>();
-      const trailersDeferred = new Deferred<RpcMetadata>();
-      const outputStream = new RpcOutputStreamController<O>();
-
       const spanOptions = createSpanOptions(method);
       const spanName = spanNameFormatter(method, 'duplex');
 
-      let call: DuplexStreamingCall<I, O>;
-
-      tracer.startActiveSpan(spanName, spanOptions, (span) => {
+      return tracer.startActiveSpan(spanName, spanOptions, (span) => {
         const meta = injectTraceContext(options.meta ?? {});
-        call = next(method, { ...options, meta });
+        const call = next(method, { ...options, meta });
+        const outputStream = new RpcOutputStreamController<O>();
 
-        call.headers.then((h) => headersDeferred.resolve(h)).catch((e) => {
-          setSpanError(span, e);
-          headersDeferred.reject(e);
-        });
-
-        call.status.then((s) => {
-          span.setAttribute(ATTR_RPC_GRPC_STATUS_CODE, s.code);
-          span.setStatus({ code: SpanStatusCode.OK });
-          statusDeferred.resolve(s);
-        }).catch((e) => {
-          setSpanError(span, e);
-          statusDeferred.reject(e);
-        });
-
-        call.trailers.then((t) => {
-          trailersDeferred.resolve(t);
-          span.end();
-        }).catch((e) => {
-          trailersDeferred.reject(e);
-          span.end();
-        });
+        call.status.then(
+          (s) => {
+            span.setAttribute(ATTR_RPC_GRPC_STATUS_CODE, s.code);
+            span.setStatus({ code: SpanStatusCode.OK });
+            span.end();
+          },
+          (e) => {
+            setSpanError(span, e);
+            span.end();
+          },
+        );
 
         call.responses.onNext((message, error, done) => {
           if (message) outputStream.notifyMessage(message);
+
           if (error) {
             setSpanError(span, error);
             outputStream.notifyError(error);
           }
+
           if (done) outputStream.notifyComplete();
         });
-      });
 
-      return new DuplexStreamingCall<I, O>(
-        method,
-        options.meta ?? {},
-        call!.requests,
-        headersDeferred.promise,
-        outputStream,
-        statusDeferred.promise,
-        trailersDeferred.promise,
-      );
+        return new DuplexStreamingCall<I, O>(
+          method,
+          options.meta ?? {},
+          call.requests,
+          call.headers,
+          outputStream,
+          call.status,
+          call.trailers,
+        );
+      });
     },
   };
 }

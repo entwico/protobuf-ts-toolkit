@@ -13,7 +13,7 @@ import type {
   ResourceInfoDetail,
   RetryInfoDetail,
 } from '../types.js';
-import { encodeStatus, type Any } from './status.js';
+import { type Any, encodeStatus } from './status.js';
 
 // Type URLs for google.rpc error detail types
 const TYPE_URLS = {

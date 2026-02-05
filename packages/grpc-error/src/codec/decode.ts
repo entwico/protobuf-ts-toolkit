@@ -1,6 +1,6 @@
 import { BinaryReader, WireType } from '@protobuf-ts/runtime';
 import type { ErrorDetail } from '../types.js';
-import { parseStatus, type Any } from './status.js';
+import { type Any, parseStatus } from './status.js';
 
 // Type URLs for google.rpc error detail types
 const TYPE_URLS = {

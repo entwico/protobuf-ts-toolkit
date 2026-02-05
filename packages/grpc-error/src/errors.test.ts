@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  GrpcError,
   AbortedError,
   AlreadyExistsError,
   DeadlineExceededError,
+  GrpcError,
   NotFoundError,
   PermissionDeniedError,
   RaceUpdateError,
-  ValidationError,
-  UnavailableError,
   UnauthenticatedError,
+  UnavailableError,
   UnknownError,
+  ValidationError,
 } from './errors.js';
 
 describe('GrpcError', () => {
@@ -23,9 +23,7 @@ describe('GrpcError', () => {
 
   it('should create error with details', () => {
     const error = new GrpcError('Test error', {
-      details: [
-        { type: 'localizedMessage', locale: 'en', message: 'Localized message' },
-      ],
+      details: [{ type: 'localizedMessage', locale: 'en', message: 'Localized message' }],
     });
     expect(error.details).toHaveLength(1);
     expect(error.details[0]).toEqual({
@@ -37,9 +35,7 @@ describe('GrpcError', () => {
 
   it('should get localizedMessage from details', () => {
     const error = new GrpcError('Test error', {
-      details: [
-        { type: 'localizedMessage', locale: 'en', message: 'User-friendly message' },
-      ],
+      details: [{ type: 'localizedMessage', locale: 'en', message: 'User-friendly message' }],
     });
     expect(error.localizedMessage).toBe('User-friendly message');
   });

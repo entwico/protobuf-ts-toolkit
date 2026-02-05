@@ -1,21 +1,23 @@
-import type { MethodInfo, RpcInterceptor, RpcMetadata, RpcOptions, RpcStatus } from '@protobuf-ts/runtime-rpc';
 import {
   ClientStreamingCall,
   Deferred,
   DuplexStreamingCall,
+  type MethodInfo,
+  type RpcInterceptor,
+  type RpcMetadata,
+  type RpcOptions,
   RpcOutputStreamController,
+  type RpcStatus,
   ServerStreamingCall,
   UnaryCall,
 } from '@protobuf-ts/runtime-rpc';
 import type { CallType, MetadataContext, MetadataInterceptorConfig, MetadataProvider } from './types.js';
 
-async function resolveMetadata(
-  provider: MetadataProvider,
-  context: MetadataContext,
-): Promise<RpcMetadata> {
+function resolveMetadata(provider: MetadataProvider, context: MetadataContext): RpcMetadata | Promise<RpcMetadata> {
   if (typeof provider === 'function') {
-    return await provider(context);
+    return provider(context);
   }
+
   return provider;
 }
 
@@ -68,8 +70,17 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
       }
 
       const context: MetadataContext = { callType: 'unary', method };
-      const callPromise = resolveMetadata(metadata, context).then((resolved) => {
+      const resolved = resolveMetadata(metadata, context);
+
+      if (!(resolved instanceof Promise)) {
         const meta = { ...options.meta, ...resolved };
+
+        return next(method, input, { ...options, meta });
+      }
+
+      const callPromise = resolved.then((resolvedMeta) => {
+        const meta = { ...options.meta, ...resolvedMeta };
+
         return next(method, input, { ...options, meta });
       });
 
@@ -89,11 +100,19 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
         return next(method, input, options);
       }
 
-      const outputStream = new RpcOutputStreamController();
       const context: MetadataContext = { callType: 'serverStreaming', method };
+      const resolved = resolveMetadata(metadata, context);
 
-      const callPromise = resolveMetadata(metadata, context).then((resolved) => {
+      if (!(resolved instanceof Promise)) {
         const meta = { ...options.meta, ...resolved };
+
+        return next(method, input, { ...options, meta });
+      }
+
+      const outputStream = new RpcOutputStreamController();
+
+      const callPromise = resolved.then((resolvedMeta) => {
+        const meta = { ...options.meta, ...resolvedMeta };
         const call = next(method, input, { ...options, meta });
 
         call.responses.onNext((message, error, done) => {
@@ -125,6 +144,15 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
         return next(method, options);
       }
 
+      const context: MetadataContext = { callType: 'clientStreaming', method };
+      const resolved = resolveMetadata(metadata, context);
+
+      if (!(resolved instanceof Promise)) {
+        const meta = { ...options.meta, ...resolved };
+
+        return next(method, { ...options, meta });
+      }
+
       const headersDeferred = new Deferred<RpcMetadata>();
       const responseDeferred = new Deferred<O>();
       const statusDeferred = new Deferred<RpcStatus>();
@@ -134,9 +162,8 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
       const pendingMessages: I[] = [];
       let sendCompleted = false;
 
-      const context: MetadataContext = { callType: 'clientStreaming', method };
-      resolveMetadata(metadata, context).then((resolved) => {
-        const meta = { ...options.meta, ...resolved };
+      resolved.then((resolvedMeta) => {
+        const meta = { ...options.meta, ...resolvedMeta };
         const call = next(method, { ...options, meta });
         pendingCall = call;
 
@@ -145,10 +172,10 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
         call.status.then((s) => statusDeferred.resolve(s)).catch((e) => statusDeferred.reject(e));
         call.trailers.then((t) => trailersDeferred.resolve(t)).catch((e) => trailersDeferred.reject(e));
 
-        // Flush buffered messages
         for (const msg of pendingMessages) {
           call.requests.send(msg);
         }
+
         pendingMessages.length = 0;
 
         if (sendCompleted) {
@@ -161,12 +188,14 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
           if (pendingCall) {
             return pendingCall.requests.send(message);
           }
+
           pendingMessages.push(message);
         },
         complete: async (): Promise<void> => {
           if (pendingCall) {
             return pendingCall.requests.complete();
           }
+
           sendCompleted = true;
         },
       };
@@ -191,6 +220,15 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
         return next(method, options);
       }
 
+      const context: MetadataContext = { callType: 'duplex', method };
+      const resolved = resolveMetadata(metadata, context);
+
+      if (!(resolved instanceof Promise)) {
+        const meta = { ...options.meta, ...resolved };
+
+        return next(method, { ...options, meta });
+      }
+
       const headersDeferred = new Deferred<RpcMetadata>();
       const statusDeferred = new Deferred<RpcStatus>();
       const trailersDeferred = new Deferred<RpcMetadata>();
@@ -200,9 +238,8 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
       const pendingMessages: I[] = [];
       let sendCompleted = false;
 
-      const context: MetadataContext = { callType: 'duplex', method };
-      resolveMetadata(metadata, context).then((resolved) => {
-        const meta = { ...options.meta, ...resolved };
+      resolved.then((resolvedMeta) => {
+        const meta = { ...options.meta, ...resolvedMeta };
         const call = next(method, { ...options, meta });
         pendingCall = call;
 
@@ -216,10 +253,10 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
           if (done) responseStream.notifyComplete();
         });
 
-        // Flush buffered messages
         for (const msg of pendingMessages) {
           call.requests.send(msg);
         }
+
         pendingMessages.length = 0;
 
         if (sendCompleted) {
@@ -232,12 +269,14 @@ export function createMetadataInterceptor(config: MetadataInterceptorConfig): Rp
           if (pendingCall) {
             return pendingCall.requests.send(message);
           }
+
           pendingMessages.push(message);
         },
         complete: async (): Promise<void> => {
           if (pendingCall) {
             return pendingCall.requests.complete();
           }
+
           sendCompleted = true;
         },
       };

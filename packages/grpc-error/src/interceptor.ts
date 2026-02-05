@@ -1,9 +1,11 @@
-import type { MethodInfo, RpcInterceptor, RpcMetadata, RpcOptions, RpcStatus } from '@protobuf-ts/runtime-rpc';
 import {
   ClientStreamingCall,
-  Deferred,
   DuplexStreamingCall,
+  type MethodInfo,
   RpcError,
+  type RpcInterceptor,
+  type RpcMetadata,
+  type RpcOptions,
   RpcOutputStreamController,
   ServerStreamingCall,
   UnaryCall,
@@ -13,7 +15,7 @@ import {
   AbortedError,
   AlreadyExistsError,
   DeadlineExceededError,
-  GrpcError,
+  type GrpcError,
   NotFoundError,
   PermissionDeniedError,
   UnauthenticatedError,
@@ -71,9 +73,11 @@ function decodeBase64(base64: string): Uint8Array {
   if (typeof g.atob === 'function') {
     return Uint8Array.from(g.atob(base64), (c) => c.charCodeAt(0));
   }
+
   if (g.Buffer) {
     return new Uint8Array(g.Buffer.from(base64, 'base64'));
   }
+
   throw new Error('No base64 decoder available');
 }
 
@@ -82,6 +86,7 @@ function decodeBase64(base64: string): Uint8Array {
  */
 function parseRichErrorDetails(meta: RpcMetadata): GrpcErrorOptions {
   const richError = meta['grpc-status-details-bin'];
+
   if (!richError) {
     return { details: [] };
   }
@@ -89,9 +94,9 @@ function parseRichErrorDetails(meta: RpcMetadata): GrpcErrorOptions {
   try {
     const binary = decodeBase64(richError as string);
     const decoded = decodeGrpcStatus(binary);
+
     return { details: decoded.details };
   } catch {
-    // If parsing fails, return empty details
     return { details: [] };
   }
 }
@@ -103,12 +108,13 @@ function parseRichErrorDetails(meta: RpcMetadata): GrpcErrorOptions {
  */
 function captureCallSiteStack(): string | undefined {
   const captureTarget = { stack: '' };
+
   if (Error.captureStackTrace) {
-    // V8 environments (Node.js, Chrome, Bun)
     Error.captureStackTrace(captureTarget, captureCallSiteStack);
+
     return captureTarget.stack;
   }
-  // Fallback for non-V8 environments
+
   return new Error().stack;
 }
 
@@ -119,9 +125,8 @@ function captureCallSiteStack(): string | undefined {
 function applyCallSiteStack(error: GrpcError, callSiteStack: string | undefined): void {
   if (!callSiteStack) return;
 
-  // Replace stack but keep the error's own message line
   const errorHeader = `${error.name}: ${error.message}`;
-  const stackLines = callSiteStack.split('\n').slice(1); // Remove the "Error" header line
+  const stackLines = callSiteStack.split('\n').slice(1);
   error.stack = `${errorHeader}\n${stackLines.join('\n')}`;
 }
 
@@ -138,11 +143,11 @@ function mapRpcError(
     return e instanceof Error ? e : new UnknownError();
   }
 
-  // Check if the request was aborted by the client
   if (abort?.aborted) {
     const error = new AbortedError();
     applyCallSiteStack(error, callSiteStack);
     onError?.(error);
+
     return error;
   }
 
@@ -187,6 +192,7 @@ function mapRpcError(
 
   applyCallSiteStack(error, callSiteStack);
   onError?.(error);
+
   return error;
 }
 
@@ -221,49 +227,28 @@ export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInte
 
   return {
     interceptUnary(next, method, input, options) {
-      // Capture stack trace at call site before any async operations
       const callSiteStack = captureCallSiteStack();
-
-      const headers$ = new Deferred<RpcMetadata>();
-      const response$ = new Deferred<object>();
-      const status$ = new Deferred<RpcStatus>();
-      const trailers$ = new Deferred<RpcMetadata>();
-
-      (async () => {
-        try {
-          const res = await next(method, input, options);
-          headers$.resolve(res.headers);
-          response$.resolve(res.response);
-          status$.resolve(res.status);
-          trailers$.resolve(res.trailers);
-        } catch (e) {
-          const error = mapRpcError(e, options.abort, onError, callSiteStack);
-          headers$.reject(error);
-          response$.reject(error);
-          status$.reject(error);
-          trailers$.reject(error);
-        }
-      })();
+      const call = next(method, input, options);
 
       return new UnaryCall(
         method,
         options.meta ?? {},
         input,
-        headers$.promise,
-        response$.promise,
-        status$.promise,
-        trailers$.promise,
+        call.headers,
+        call.response.catch((e) => {
+          throw mapRpcError(e, options.abort, onError, callSiteStack);
+        }),
+        call.status,
+        call.trailers,
       );
     },
 
     interceptServerStreaming(next, method, input, options) {
-      // Capture stack trace at call site before any async operations
       const callSiteStack = captureCallSiteStack();
-
+      const call = next(method, input, options);
       const outputStream = new RpcOutputStreamController();
-      const serverStream = next(method, input, options);
 
-      serverStream.responses.onNext((message, error, done) => {
+      call.responses.onNext((message, error, done) => {
         if (message) outputStream.notifyMessage(message);
         if (error) outputStream.notifyError(mapRpcError(error, options.abort, onError, callSiteStack));
         if (done) outputStream.notifyComplete();
@@ -273,10 +258,10 @@ export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInte
         method,
         options.meta ?? {},
         input,
-        serverStream.headers,
+        call.headers,
         outputStream,
-        serverStream.status,
-        serverStream.trailers,
+        call.status,
+        call.trailers,
       );
     },
 
@@ -285,29 +270,19 @@ export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInte
       method: MethodInfo<I, O>,
       options: RpcOptions,
     ): ClientStreamingCall<I, O> {
-      // Capture stack trace at call site before any async operations
       const callSiteStack = captureCallSiteStack();
-
       const call = next(method, options);
-
-      const headersDeferred = new Deferred<RpcMetadata>();
-      const responseDeferred = new Deferred<O>();
-      const statusDeferred = new Deferred<RpcStatus>();
-      const trailersDeferred = new Deferred<RpcMetadata>();
-
-      call.headers.then((h) => headersDeferred.resolve(h)).catch((e) => headersDeferred.reject(mapRpcError(e, options.abort, onError, callSiteStack)));
-      call.response.then((r) => responseDeferred.resolve(r)).catch((e) => responseDeferred.reject(mapRpcError(e, options.abort, onError, callSiteStack)));
-      call.status.then((s) => statusDeferred.resolve(s)).catch((e) => statusDeferred.reject(mapRpcError(e, options.abort, onError, callSiteStack)));
-      call.trailers.then((t) => trailersDeferred.resolve(t)).catch((e) => trailersDeferred.reject(mapRpcError(e, options.abort, onError, callSiteStack)));
 
       return new ClientStreamingCall<I, O>(
         method,
         options.meta ?? {},
         call.requests,
-        headersDeferred.promise,
-        responseDeferred.promise,
-        statusDeferred.promise,
-        trailersDeferred.promise,
+        call.headers,
+        call.response.catch((e) => {
+          throw mapRpcError(e, options.abort, onError, callSiteStack);
+        }),
+        call.status,
+        call.trailers,
       );
     },
 
@@ -316,19 +291,9 @@ export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInte
       method: MethodInfo<I, O>,
       options: RpcOptions,
     ): DuplexStreamingCall<I, O> {
-      // Capture stack trace at call site before any async operations
       const callSiteStack = captureCallSiteStack();
-
       const call = next(method, options);
-
-      const headersDeferred = new Deferred<RpcMetadata>();
-      const statusDeferred = new Deferred<RpcStatus>();
-      const trailersDeferred = new Deferred<RpcMetadata>();
       const outputStream = new RpcOutputStreamController<O>();
-
-      call.headers.then((h) => headersDeferred.resolve(h)).catch((e) => headersDeferred.reject(mapRpcError(e, options.abort, onError, callSiteStack)));
-      call.status.then((s) => statusDeferred.resolve(s)).catch((e) => statusDeferred.reject(mapRpcError(e, options.abort, onError, callSiteStack)));
-      call.trailers.then((t) => trailersDeferred.resolve(t)).catch((e) => trailersDeferred.reject(mapRpcError(e, options.abort, onError, callSiteStack)));
 
       call.responses.onNext((message, error, done) => {
         if (message) outputStream.notifyMessage(message);
@@ -340,10 +305,10 @@ export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInte
         method,
         options.meta ?? {},
         call.requests,
-        headersDeferred.promise,
+        call.headers,
         outputStream,
-        statusDeferred.promise,
-        trailersDeferred.promise,
+        call.status,
+        call.trailers,
       );
     },
   };
