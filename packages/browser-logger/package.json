@@ -1,6 +1,6 @@
 {
   "name": "@protobuf-ts-toolkit/browser-logger",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Browser console logging interceptor for gRPC calls with styled output",
   "type": "module",
   "main": "./dist/index.js",

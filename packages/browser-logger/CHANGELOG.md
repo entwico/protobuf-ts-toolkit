@@ -1,5 +1,11 @@
 # @protobuf-ts-toolkit/browser-logger
 
+## 1.0.3
+
+### Patch Changes
+
+- abb90a7: less promises for better performance
+
 ## 1.0.2
 
 ### Patch Changes

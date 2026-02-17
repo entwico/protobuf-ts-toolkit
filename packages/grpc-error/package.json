@@ -1,6 +1,6 @@
 {
   "name": "@protobuf-ts-toolkit/grpc-error",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Typed error classes and interceptor for gRPC applications",
   "type": "module",
   "main": "./dist/index.js",

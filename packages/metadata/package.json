@@ -1,6 +1,6 @@
 {
   "name": "@protobuf-ts-toolkit/metadata",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Metadata interceptor for gRPC: supports static, sync, and async metadata with streaming support",
   "type": "module",
   "main": "./dist/index.js",
