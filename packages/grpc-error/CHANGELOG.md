@@ -1,5 +1,11 @@
 # @protobuf-ts-toolkit/grpc-error
 
+## 1.0.2
+
+### Patch Changes
+
+- e3d1991: fix error propagation
+
 ## 1.0.1
 
 ### Patch Changes
