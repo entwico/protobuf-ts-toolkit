@@ -225,32 +225,38 @@ function mapRpcError(
 export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInterceptor {
   const onError = config?.onError;
 
+  function createCatchError(options: RpcOptions): (e: unknown) => never {
+    const callSiteStack = captureCallSiteStack();
+
+    return (e: unknown): never => {
+      throw mapRpcError(e, options.abort, onError, callSiteStack);
+    };
+  }
+
   return {
     interceptUnary(next, method, input, options) {
-      const callSiteStack = captureCallSiteStack();
       const call = next(method, input, options);
+      const catchError = createCatchError(options);
 
       return new UnaryCall(
         method,
         options.meta ?? {},
         input,
         call.headers,
-        call.response.catch((e) => {
-          throw mapRpcError(e, options.abort, onError, callSiteStack);
-        }),
-        call.status,
-        call.trailers,
+        call.response.catch(catchError),
+        call.status.catch(catchError),
+        call.trailers.catch(catchError),
       );
     },
 
     interceptServerStreaming(next, method, input, options) {
-      const callSiteStack = captureCallSiteStack();
       const call = next(method, input, options);
+      const catchError = createCatchError(options);
       const outputStream = new RpcOutputStreamController();
 
       call.responses.onNext((message, error, done) => {
         if (message) outputStream.notifyMessage(message);
-        if (error) outputStream.notifyError(mapRpcError(error, options.abort, onError, callSiteStack));
+        if (error) outputStream.notifyError(catchError(error));
         if (done) outputStream.notifyComplete();
       });
 
@@ -260,8 +266,8 @@ export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInte
         input,
         call.headers,
         outputStream,
-        call.status,
-        call.trailers,
+        call.status.catch(catchError),
+        call.trailers.catch(catchError),
       );
     },
 
@@ -270,19 +276,17 @@ export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInte
       method: MethodInfo<I, O>,
       options: RpcOptions,
     ): ClientStreamingCall<I, O> {
-      const callSiteStack = captureCallSiteStack();
       const call = next(method, options);
+      const catchError = createCatchError(options);
 
       return new ClientStreamingCall<I, O>(
         method,
         options.meta ?? {},
         call.requests,
         call.headers,
-        call.response.catch((e) => {
-          throw mapRpcError(e, options.abort, onError, callSiteStack);
-        }),
-        call.status,
-        call.trailers,
+        call.response.catch(catchError),
+        call.status.catch(catchError),
+        call.trailers.catch(catchError),
       );
     },
 
@@ -291,13 +295,13 @@ export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInte
       method: MethodInfo<I, O>,
       options: RpcOptions,
     ): DuplexStreamingCall<I, O> {
-      const callSiteStack = captureCallSiteStack();
       const call = next(method, options);
+      const catchError = createCatchError(options);
       const outputStream = new RpcOutputStreamController<O>();
 
       call.responses.onNext((message, error, done) => {
         if (message) outputStream.notifyMessage(message);
-        if (error) outputStream.notifyError(mapRpcError(error, options.abort, onError, callSiteStack));
+        if (error) outputStream.notifyError(catchError(error));
         if (done) outputStream.notifyComplete();
       });
 
@@ -307,8 +311,8 @@ export function createErrorInterceptor(config?: ErrorInterceptorConfig): RpcInte
         call.requests,
         call.headers,
         outputStream,
-        call.status,
-        call.trailers,
+        call.status.catch(catchError),
+        call.trailers.catch(catchError),
       );
     },
   };
