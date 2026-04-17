@@ -1,5 +1,11 @@
 # @protobuf-ts-toolkit/browser-logger
 
+## 1.0.4
+
+### Patch Changes
+
+- ca1099e: update license
+
 ## 1.0.3
 
 ### Patch Changes
