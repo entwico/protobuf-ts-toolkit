@@ -1,6 +1,6 @@
 {
   "name": "@protobuf-ts-toolkit/grpc-web-hybrid",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Hybrid gRPC-web transport: HTTP for unary/server-streaming, WebSocket for client-streaming/duplex",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,11 @@
 # @protobuf-ts-toolkit/grpc-error
 
+## 1.0.3
+
+### Patch Changes
+
+- ca1099e: update license
+
 ## 1.0.2
 
 ### Patch Changes

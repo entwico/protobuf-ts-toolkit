@@ -1,6 +1,6 @@
 {
   "name": "@protobuf-ts-toolkit/opentelemetry",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "OpenTelemetry interceptor for gRPC calls with protobuf-ts",
   "type": "module",
   "main": "./dist/index.js",
