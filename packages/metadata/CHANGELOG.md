@@ -1,5 +1,11 @@
 # @protobuf-ts-toolkit/metadata
 
+## 1.0.2
+
+### Patch Changes
+
+- ca1099e: update license
+
 ## 1.0.1
 
 ### Patch Changes
